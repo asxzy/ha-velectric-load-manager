@@ -309,24 +309,22 @@ class VElectricEnergySensor(VElectricBaseSensor):
         """Restore energy state from Home Assistant state machine."""
         if self._restored_state:
             return
-            
+
         old_state = await self.async_get_last_state()
         if old_state and old_state.state not in (None, "unavailable", "unknown"):
             try:
                 self._energy_total = float(old_state.state)
                 _LOGGER.info(
-                    "Restored energy state for %s: %.3f kWh", 
-                    self.entity_id, 
-                    self._energy_total
+                    "Restored energy state for %s: %.3f kWh",
+                    self.entity_id,
+                    self._energy_total,
                 )
             except (ValueError, TypeError) as err:
                 _LOGGER.warning(
-                    "Could not restore energy state for %s: %s", 
-                    self.entity_id, 
-                    err
+                    "Could not restore energy state for %s: %s", self.entity_id, err
                 )
                 self._energy_total = 0.0
-        
+
         self._restored_state = True
 
     @property

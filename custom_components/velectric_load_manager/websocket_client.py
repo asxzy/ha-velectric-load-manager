@@ -100,9 +100,6 @@ class VElectricWebSocketClient:
         self.on_status_change: Optional[Callable] = None
         self.on_current_reading: Optional[Callable] = None
         self.on_settings_update: Optional[Callable] = None
-        
-        # Task management
-        self._config_send_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> None:
         """Connect to the VElectric device."""
@@ -144,7 +141,7 @@ class VElectricWebSocketClient:
         self._connected = False
 
         # Cancel tasks with timeout protection
-        tasks_to_cancel = [self._ping_task, self._message_task, self._config_send_task]
+        tasks_to_cancel = [self._ping_task, self._message_task]
         for task in tasks_to_cancel:
             if task and not task.done():
                 task.cancel()
@@ -155,7 +152,6 @@ class VElectricWebSocketClient:
 
         self._ping_task = None
         self._message_task = None
-        self._config_send_task = None
 
         if self._websocket:
             try:
@@ -395,78 +391,8 @@ class VElectricWebSocketClient:
             command_bytes = struct.pack("B", command)
             await self._websocket.send(command_bytes)
 
-    async def send_config_to_server(self) -> None:
-        """
-        Send current configuration to the device
-
-        Sends 12-byte configuration message with current settings
-        """
-        if not (self._websocket and self._connected):
-            _LOGGER.warning("Cannot send configuration: WebSocket not connected")
-            return
-
-        # Build 12-byte configuration message
-        config_data = bytearray(12)
-
-        # Byte 0: Main supply breaker
-        config_data[0] = round(self.settings.main_supply_breaker / self.settings.scale)
-
-        # Bytes 1-9: Load configurations (3 loads × 3 bytes each)
-        for i in range(len(self.settings.loads)):
-            load = self.settings.loads[i]
-            base_idx = i * 3 + 1
-            config_data[base_idx] = round(load.load_breaker / self.settings.scale)
-            config_data[base_idx + 1] = load.turn_on_delay
-            config_data[base_idx + 2] = load.turn_off_delay
-
-        # Bytes 10-11: Active channels and CT index
-        config_data[10] = self.settings.active_ch
-        config_data[11] = self.settings.ct_index
-
-        await self._websocket.send(config_data)
-        _LOGGER.info("Configuration sent to server")
-
-    async def save_config(self) -> None:
-        """Send save command (115) to persist configuration to device memory"""
-        if self._websocket and self._connected:
-            await self._send_command(115)
-            _LOGGER.info("Save command sent to server")
-        else:
-            _LOGGER.warning("Cannot send save command: WebSocket not connected")
-
-    def update_settings(self, **kwargs) -> None:
-        """Update settings and send to device"""
-        # Update settings with provided kwargs
-        for key, value in kwargs.items():
-            if hasattr(self.settings, key):
-                setattr(self.settings, key, value)
-
-        # Schedule config send (async) with proper task management
-        if self._connected:
-            self._schedule_config_send()
-
-    def update_load_setting(self, load_index: int, setting_name: str, value) -> None:
-        """Update specific load setting and send to device"""
-        if 0 <= load_index < len(self.settings.loads):
-            if hasattr(self.settings.loads[load_index], setting_name):
-                setattr(self.settings.loads[load_index], setting_name, value)
-
-                # Schedule config send (async) with proper task management
-                if self._connected:
-                    self._schedule_config_send()
-
-    def set_host(self, host: str) -> None:
-        """Update device host/IP address"""
-        self._host = host
-        self._ws_url = f"ws://{host}:{self._port}/ws"
-        # Disconnect to force reconnection with new host
-        asyncio.create_task(self.disconnect())
-
-    def _schedule_config_send(self) -> None:
-        """Schedule config send with proper task management."""
-        if self._config_send_task and not self._config_send_task.done():
-            self._config_send_task.cancel()
-        self._config_send_task = asyncio.create_task(self.send_config_to_server())
+    # Configuration modification methods removed for safety
+    # This integration is read-only monitoring only
 
     def _notify_status_change(self) -> None:
         """Notify callback of connection status change"""
