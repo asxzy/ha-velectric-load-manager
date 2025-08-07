@@ -1,4 +1,5 @@
 """Config flow for VElectric Load Manager integration."""
+
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +30,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """Validate the user input allows us to connect."""
     host = data[CONF_HOST]
     port = data[CONF_PORT]
-    
+
     # Test websocket connection
     ws_url = f"ws://{host}:{port}/ws"
     try:
@@ -42,22 +43,22 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     except Exception as err:
         _LOGGER.error("Failed to connect to VElectric device: %s", err)
         raise CannotConnect from err
-    
+
     # Return info to store in the config entry
     return {"title": f"VElectric Load Manager ({host})"}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for VElectric Load Manager."""
-    
+
     VERSION = 1
-    
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
-        
+
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
@@ -68,7 +69,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
-        
+
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )

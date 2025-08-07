@@ -1,4 +1,5 @@
 """VElectric Load Manager integration for Home Assistant."""
+
 from __future__ import annotations
 
 import asyncio
@@ -29,16 +30,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up VElectric Load Manager from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, 80)
-    
+
     coordinator = VElectricDataUpdateCoordinator(hass, host, port)
-    
+
     await coordinator.async_config_entry_first_refresh()
-    
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
-    
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
+
     return True
 
 
@@ -47,13 +48,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         coordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.async_shutdown()
-    
+
     return unload_ok
 
 
 class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from VElectric Load Manager."""
-    
+
     def __init__(self, hass: HomeAssistant, host: str, port: int) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -66,17 +67,17 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
         self._port = port
         self._client: VElectricWebSocketClient | None = None
         self._connected = False
-    
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from VElectric Load Manager."""
         if not self._client:
             self._client = VElectricWebSocketClient(self._host, self._port)
-        
+
         try:
             if not self._connected:
                 await self._client.connect()
                 self._connected = True
-            
+
             data = await self._client.get_readings()
             return {
                 "ct1_current": data.get("ct1", 0.0),
@@ -87,7 +88,7 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
             self._connected = False
             _LOGGER.warning("Error communicating with VElectric device: %s", err)
             raise UpdateFailed(f"Error communicating with device: {err}") from err
-    
+
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and close connections."""
         if self._client:

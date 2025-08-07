@@ -1,4 +1,5 @@
 """Constants for VElectric Load Manager integration."""
+
 from typing import Final
 
 DOMAIN: Final = "velectric_load_manager"
