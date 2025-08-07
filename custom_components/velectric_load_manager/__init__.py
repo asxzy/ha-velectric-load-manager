@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -17,7 +16,6 @@ from .const import (
     CONF_PORT,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    PING_INTERVAL,
 )
 from .websocket_client import VElectricWebSocketClient
 

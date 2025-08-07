@@ -7,6 +7,7 @@ DOMAIN: Final = "velectric_load_manager"
 # Configuration keys
 CONF_HOST: Final = "host"
 CONF_PORT: Final = "port"
+CONF_NAME: Final = "name"
 
 # Default values
 DEFAULT_PORT: Final = 80

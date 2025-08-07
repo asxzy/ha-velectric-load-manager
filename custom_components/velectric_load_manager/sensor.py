@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import VElectricDataUpdateCoordinator
 from .const import (
     CONF_HOST,
+    CONF_NAME,
     DOMAIN,
     MANUFACTURER,
     MODEL,
@@ -39,12 +40,17 @@ async def async_setup_entry(
     """Set up the VElectric Load Manager sensors."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     host = config_entry.data[CONF_HOST]
+    device_name = config_entry.data.get(CONF_NAME, f"VElectric Load Manager ({host})")
 
     entities = [
-        VElectricCurrentSensor(coordinator, config_entry, SENSOR_CT1_CURRENT, host),
-        VElectricCurrentSensor(coordinator, config_entry, SENSOR_CT2_CURRENT, host),
+        VElectricCurrentSensor(
+            coordinator, config_entry, SENSOR_CT1_CURRENT, host, device_name
+        ),
+        VElectricCurrentSensor(
+            coordinator, config_entry, SENSOR_CT2_CURRENT, host, device_name
+        ),
         VElectricConnectionSensor(
-            coordinator, config_entry, SENSOR_CONNECTION_STATUS, host
+            coordinator, config_entry, SENSOR_CONNECTION_STATUS, host, device_name
         ),
     ]
 
@@ -62,17 +68,24 @@ class VElectricBaseSensor(
         config_entry: ConfigEntry,
         sensor_key: str,
         host: str,
+        device_name: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._sensor_key = sensor_key
         self._host = host
-        self._attr_name = SENSOR_NAMES[sensor_key]
         self._attr_unique_id = f"{config_entry.entry_id}_{sensor_key}"
+
+        # Create friendly sensor names that include device name for multi-device setups
+        base_name = SENSOR_NAMES[sensor_key]
+        if "VElectric Load Manager" not in device_name:
+            self._attr_name = f"{device_name} {base_name}"
+        else:
+            self._attr_name = base_name
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, config_entry.entry_id)},
-            name=f"VElectric Load Manager ({host})",
+            name=device_name,
             manufacturer=MANUFACTURER,
             model=MODEL,
             sw_version="1.0",
@@ -93,9 +106,10 @@ class VElectricCurrentSensor(VElectricBaseSensor):
         config_entry: ConfigEntry,
         sensor_key: str,
         host: str,
+        device_name: str,
     ) -> None:
         """Initialize the current sensor."""
-        super().__init__(coordinator, config_entry, sensor_key, host)
+        super().__init__(coordinator, config_entry, sensor_key, host, device_name)
         self._attr_device_class = SensorDeviceClass.CURRENT
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
@@ -118,9 +132,10 @@ class VElectricConnectionSensor(VElectricBaseSensor):
         config_entry: ConfigEntry,
         sensor_key: str,
         host: str,
+        device_name: str,
     ) -> None:
         """Initialize the connection sensor."""
-        super().__init__(coordinator, config_entry, sensor_key, host)
+        super().__init__(coordinator, config_entry, sensor_key, host, device_name)
         self._attr_icon = "mdi:connection"
 
     @property

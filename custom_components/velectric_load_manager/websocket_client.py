@@ -67,7 +67,7 @@ class VElectricWebSocketClient:
                     await asyncio.wait_for(task, timeout=5.0)
                 except (asyncio.CancelledError, asyncio.TimeoutError):
                     pass
-        
+
         self._ping_task = None
         self._message_task = None
 
