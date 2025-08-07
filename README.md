@@ -36,7 +36,7 @@ Home Assistant custom integration for VElectric Load Manager devices. Monitor cu
 
 ## Configuration
 
-1. Go to **Settings** ’ **Devices & Services**
+1. Go to **Settings** â†’ **Devices & Services**
 2. Click **Add Integration**
 3. Search for "VElectric Load Manager"
 4. Enter your device's IP address and port (default: 80)
