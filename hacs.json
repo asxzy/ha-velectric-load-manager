@@ -1,0 +1,9 @@
+{
+  "name": "VElectric Load Manager",
+  "domain": "velectric_load_manager",
+  "documentation": "https://github.com/asxzy/ha-velectric-load-manager",
+  "issue_tracker": "https://github.com/asxzy/ha-velectric-load-manager/issues",
+  "codeowners": ["@asxzy"],
+  "iot_class": "Local Push",
+  "version": "1.0.0"
+}
