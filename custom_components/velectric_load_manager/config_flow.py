@@ -17,7 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_HOST, CONF_PORT, CONF_NAME, DEFAULT_PORT, DOMAIN
+from .const import CONF_HOST, CONF_PORT, CONF_NAME, CONF_VOLTAGE, DEFAULT_PORT, DEFAULT_VOLTAGE, DOMAIN
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -139,9 +139,15 @@ class OptionsFlow(config_entries.OptionsFlow):
                 CONF_NAME: user_input.get(CONF_NAME, self.config_entry.data.get(CONF_NAME)),
             }
             
-            # Update the config entry with new data
+            # Store voltage in options for easy reconfiguration
+            options = {
+                **self.config_entry.options,
+                CONF_VOLTAGE: user_input.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
+            }
+            
+            # Update the config entry with new data and options
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
+                self.config_entry, data=new_data, options=options
             )
             return self.async_create_entry(title="", data={})
 
@@ -149,10 +155,14 @@ class OptionsFlow(config_entries.OptionsFlow):
         current_name = self.config_entry.data.get(
             CONF_NAME, f"VElectric Load Manager ({self.config_entry.data[CONF_HOST]})"
         )
+        current_voltage = self.config_entry.options.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
 
         options_schema = vol.Schema(
             {
                 vol.Optional(CONF_NAME, default=current_name): str,
+                vol.Optional(CONF_VOLTAGE, default=current_voltage): vol.All(
+                    vol.Coerce(float), vol.Range(min=100, max=400)
+                ),
             }
         )
 
