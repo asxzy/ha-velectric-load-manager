@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CONF_HOST,
     CONF_PORT,
+    CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -28,8 +29,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up VElectric Load Manager from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, 80)
+    scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
 
-    coordinator = VElectricDataUpdateCoordinator(hass, host, port)
+    coordinator = VElectricDataUpdateCoordinator(hass, host, port, scan_interval)
+    coordinator.config_entry = entry  # Store reference for sensors to access config
 
     await coordinator.async_config_entry_first_refresh()
 
@@ -53,16 +56,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from VElectric Load Manager."""
 
-    def __init__(self, hass: HomeAssistant, host: str, port: int) -> None:
+    def __init__(
+        self, hass: HomeAssistant, host: str, port: int, scan_interval: int
+    ) -> None:
         """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
         self._host = host
         self._port = port
+        self._scan_interval = scan_interval
         self._client: VElectricWebSocketClient | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:

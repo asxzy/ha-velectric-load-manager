@@ -9,6 +9,7 @@ CONF_HOST: Final = "host"
 CONF_PORT: Final = "port"
 CONF_NAME: Final = "name"
 CONF_VOLTAGE: Final = "voltage"
+CONF_SCAN_INTERVAL: Final = "scan_interval"
 
 # Default values
 DEFAULT_PORT: Final = 80

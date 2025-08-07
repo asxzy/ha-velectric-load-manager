@@ -17,7 +17,17 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import CONF_HOST, CONF_PORT, CONF_NAME, CONF_VOLTAGE, DEFAULT_PORT, DEFAULT_VOLTAGE, DOMAIN
+from .const import (
+    CONF_HOST,
+    CONF_PORT,
+    CONF_NAME,
+    CONF_VOLTAGE,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_PORT,
+    DEFAULT_VOLTAGE,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,6 +40,12 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
             int, vol.Range(min=1, max=65535)
         ),
         vol.Optional(CONF_NAME): str,
+        vol.Optional(CONF_VOLTAGE, default=DEFAULT_VOLTAGE): vol.All(
+            vol.Coerce(float), vol.Range(min=100, max=400)
+        ),
+        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=60)
+        ),
     }
 )
 
@@ -37,7 +53,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 def _validate_hostname(hostname: str) -> None:
     """Validate hostname or IP address."""
     hostname = hostname.strip()
-    
+
     # Check for invalid characters
     if any(char in hostname for char in ["<", ">", '"', "'"]):
         raise CannotConnect("Invalid characters in hostname")
@@ -61,7 +77,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """Validate the user input allows us to connect."""
     host = data[CONF_HOST].strip()
     port = data[CONF_PORT]
-    
+
     # Validate hostname/IP format
     _validate_hostname(host)
 
@@ -133,21 +149,27 @@ class OptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Update the config entry data
+            # Update the config entry data with all configurable fields
             new_data = {
                 **self.config_entry.data,
-                CONF_NAME: user_input.get(CONF_NAME, self.config_entry.data.get(CONF_NAME)),
+                CONF_NAME: user_input.get(
+                    CONF_NAME, self.config_entry.data.get(CONF_NAME)
+                ),
+                CONF_VOLTAGE: user_input.get(
+                    CONF_VOLTAGE,
+                    self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
+                ),
+                CONF_SCAN_INTERVAL: user_input.get(
+                    CONF_SCAN_INTERVAL,
+                    self.config_entry.data.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    ),
+                ),
             }
-            
-            # Store voltage in options for easy reconfiguration
-            options = {
-                **self.config_entry.options,
-                CONF_VOLTAGE: user_input.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
-            }
-            
-            # Update the config entry with new data and options
+
+            # Update the config entry with new data
             self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data, options=options
+                self.config_entry, data=new_data
             )
             return self.async_create_entry(title="", data={})
 
@@ -155,7 +177,10 @@ class OptionsFlow(config_entries.OptionsFlow):
         current_name = self.config_entry.data.get(
             CONF_NAME, f"VElectric Load Manager ({self.config_entry.data[CONF_HOST]})"
         )
-        current_voltage = self.config_entry.options.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
+        current_voltage = self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
+        current_scan_interval = self.config_entry.data.get(
+            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
 
         options_schema = vol.Schema(
             {
@@ -163,6 +188,9 @@ class OptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_VOLTAGE, default=current_voltage): vol.All(
                     vol.Coerce(float), vol.Range(min=100, max=400)
                 ),
+                vol.Optional(
+                    CONF_SCAN_INTERVAL, default=current_scan_interval
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
             }
         )
 
