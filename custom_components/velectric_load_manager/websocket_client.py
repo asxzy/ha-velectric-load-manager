@@ -6,6 +6,9 @@ import asyncio
 import logging
 import math
 import struct
+from dataclasses import dataclass, asdict
+from enum import Enum
+from typing import Callable, Optional
 
 import websockets
 from websockets.exceptions import ConnectionClosed, WebSocketException
@@ -13,6 +16,56 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from .const import PACKET_SIZE, PING_INTERVAL, WS_REQUEST_BYTE
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ConnectionStatus(Enum):
+    DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
+    CONNECTED = "connected"
+
+
+class LoadStatus(Enum):
+    OFF = "off"
+    ON = "on"
+    WAIT_OFF = "wait-off"
+    WAIT_ON = "wait-on"
+
+
+@dataclass
+class LoadConfig:
+    """Configuration for a single load channel"""
+
+    load_breaker: int  # Load breaker rating in amps
+    turn_on_delay: int  # Delay before turning on load (seconds for wait-on status)
+    turn_off_delay: int  # Delay before turning off load (seconds)
+
+
+@dataclass
+class LoadState:
+    """Current state of a load channel"""
+
+    status: LoadStatus
+    remaining_time: Optional[int] = None  # Remaining time in seconds for wait states
+
+
+@dataclass
+class Settings:
+    """VElectric Load Manager configuration settings"""
+
+    main_supply_breaker: int = 100  # Main supply breaker rating in amps
+    loads: list[LoadConfig] = None  # Configuration for each load channel (up to 3)
+    active_ch: int = 2  # Number of active channels
+    ct_index: int = 0  # Current transformer index
+    ct_rating: int = 100  # CT rating in amps
+    scale: int = 1  # Scaling factor
+
+
+@dataclass
+class CurrentReadings:
+    """Current readings from CT1 and CT2"""
+
+    ct1: float  # CT1 current reading in amps
+    ct2: float  # CT2 current reading in amps
 
 
 class VElectricWebSocketClient:
@@ -30,25 +83,57 @@ class VElectricWebSocketClient:
         self._latest_readings: dict[str, float] = {"ct1": 0.0, "ct2": 0.0}
         self._lock = asyncio.Lock()
 
+        # Initialize default settings
+        default_loads = [
+            LoadConfig(load_breaker=60, turn_on_delay=6, turn_off_delay=10),
+            LoadConfig(load_breaker=60, turn_on_delay=8, turn_off_delay=8),
+            LoadConfig(load_breaker=60, turn_on_delay=10, turn_off_delay=6),
+        ]
+        self.settings = Settings(loads=default_loads)
+
+        # Current state
+        self.current_readings = CurrentReadings(ct1=0.0, ct2=0.0)
+        self.load_status = [LoadState(LoadStatus.OFF) for _ in range(3)]
+        self.connection_status = ConnectionStatus.DISCONNECTED
+
+        # Event callbacks
+        self.on_status_change: Optional[Callable] = None
+        self.on_current_reading: Optional[Callable] = None
+        self.on_settings_update: Optional[Callable] = None
+        
+        # Task management
+        self._config_send_task: Optional[asyncio.Task] = None
+
     async def connect(self) -> None:
         """Connect to the VElectric device."""
-        if self._connected:
-            return
+        async with self._lock:
+            if self._connected:
+                return
 
-        try:
-            _LOGGER.debug("Connecting to VElectric device at %s", self._ws_url)
-            self._websocket = await websockets.connect(self._ws_url)
-            self._connected = True
-            _LOGGER.info("Connected to VElectric device at %s", self._ws_url)
+            try:
+                _LOGGER.debug("Connecting to VElectric device at %s", self._ws_url)
+                self.connection_status = ConnectionStatus.CONNECTING
+                self._notify_status_change()
 
-            # Start the ping loop and message handler
-            self._ping_task = asyncio.create_task(self._ping_loop())
-            self._message_task = asyncio.create_task(self._message_handler())
+                self._websocket = await websockets.connect(self._ws_url)
+                self._connected = True
+                self.connection_status = ConnectionStatus.CONNECTED
+                _LOGGER.info("Connected to VElectric device at %s", self._ws_url)
+                self._notify_status_change()
 
-        except Exception as err:
-            _LOGGER.error("Failed to connect to VElectric device: %s", err)
-            self._connected = False
-            raise
+                # Send initial command (105) to initialize connection
+                await self._send_command(105)
+
+                # Start the ping loop and message handler
+                self._ping_task = asyncio.create_task(self._ping_loop())
+                self._message_task = asyncio.create_task(self._message_handler())
+
+            except Exception as err:
+                _LOGGER.error("Failed to connect to VElectric device: %s", err)
+                self._connected = False
+                self.connection_status = ConnectionStatus.DISCONNECTED
+                self._notify_status_change()
+                raise
 
     async def disconnect(self) -> None:
         """Disconnect from the VElectric device."""
@@ -59,9 +144,9 @@ class VElectricWebSocketClient:
         self._connected = False
 
         # Cancel tasks with timeout protection
-        tasks_to_cancel = [self._ping_task, self._message_task]
+        tasks_to_cancel = [self._ping_task, self._message_task, self._config_send_task]
         for task in tasks_to_cancel:
-            if task:
+            if task and not task.done():
                 task.cancel()
                 try:
                     await asyncio.wait_for(task, timeout=5.0)
@@ -70,6 +155,7 @@ class VElectricWebSocketClient:
 
         self._ping_task = None
         self._message_task = None
+        self._config_send_task = None
 
         if self._websocket:
             try:
@@ -79,6 +165,8 @@ class VElectricWebSocketClient:
             finally:
                 self._websocket = None
 
+        self.connection_status = ConnectionStatus.DISCONNECTED
+        self._notify_status_change()
         _LOGGER.info("Disconnected from VElectric device")
 
     async def get_readings(self) -> dict[str, float]:
@@ -132,24 +220,266 @@ class VElectricWebSocketClient:
 
         try:
             async for message in self._websocket:
-                if (
-                    isinstance(message, (bytes, bytearray))
-                    and len(message) == PACKET_SIZE
-                ):
-                    readings = self.decode_currents(message)
-                    async with self._lock:
-                        self._latest_readings = readings
-                    _LOGGER.debug("Updated readings: %s", readings)
+                if isinstance(message, (bytes, bytearray)):
+                    await self._process_binary_message(message)
                 else:
                     _LOGGER.debug("Received unexpected message: %s", message)
         except (ConnectionClosed, WebSocketException) as err:
             _LOGGER.warning("Connection lost in message handler: %s", err)
             self._connected = False
+            self.connection_status = ConnectionStatus.DISCONNECTED
+            self._notify_status_change()
         except Exception as err:
             _LOGGER.error("Error in message handler: %s", err)
             self._connected = False
+            self.connection_status = ConnectionStatus.DISCONNECTED
+            self._notify_status_change()
 
     @property
     def is_connected(self) -> bool:
         """Return True if connected to the device."""
         return self._connected
+
+    async def _process_binary_message(self, data: bytes) -> None:
+        """
+        Process binary messages from VElectric device
+
+        Two types of messages:
+        1. Settings/Config (12 bytes) - Contains device configuration
+        2. Status/Readings (13+ bytes) - Contains current readings and load status
+        """
+        if len(data) == 12:
+            # Configuration/Settings message (12 bytes)
+            await self._process_settings_message(data)
+        else:
+            # Current readings and load status message (13+ bytes)
+            await self._process_readings_message(data)
+
+    async def _process_settings_message(self, data: bytes) -> None:
+        """
+        Process 12-byte settings message
+
+        Message format:
+        Byte 0: Main supply breaker rating
+        Bytes 1-3: Load 1 config (breaker, turn_on_delay, turn_off_delay)
+        Bytes 4-6: Load 2 config (breaker, turn_on_delay, turn_off_delay)
+        Bytes 7-9: Load 3 config (breaker, turn_on_delay, turn_off_delay)
+        Byte 10: Active channels count
+        Byte 11: CT index
+        """
+        # Parse main supply breaker
+        main_breaker = data[0] * 1  # Scale factor of 1
+
+        # Parse load configurations
+        loads = []
+        for i in range(3):
+            base_idx = i * 3 + 1
+            load_config = LoadConfig(
+                load_breaker=data[base_idx] * 1,  # Scale factor of 1
+                turn_on_delay=data[base_idx + 1],
+                turn_off_delay=data[base_idx + 2],
+            )
+            loads.append(load_config)
+
+        # Parse other settings
+        active_ch = data[10]
+        ct_index = data[11]
+        ct_rating = 100 * (ct_index + 1)  # CT rating calculation
+
+        # Update settings
+        self.settings = Settings(
+            main_supply_breaker=main_breaker,
+            loads=loads,
+            active_ch=active_ch,
+            ct_index=ct_index,
+            scale=1,
+            ct_rating=ct_rating,
+        )
+
+        if self.on_settings_update:
+            self.on_settings_update(self.settings)
+
+    async def _process_readings_message(self, data: bytes) -> None:
+        """
+        Process current readings and load status message
+
+        Message format:
+        Bytes 0-1: CT1 raw reading (uint16, little-endian)
+        Bytes 2-3: CT2 raw reading (uint16, little-endian)
+        Bytes 4-5: Load 1 counter (uint16, little-endian)
+        Bytes 6-7: Load 2 counter (uint16, little-endian)
+        Bytes 8-9: Load 3 counter (uint16, little-endian)
+        Byte 10: Load 1 status (0=off, 1=on, 2=wait-off, 3=wait-on)
+        Byte 11: Load 2 status
+        Byte 12: Load 3 status
+        """
+        if len(data) < 13:
+            # Handle legacy 14-byte current-only messages
+            if len(data) == PACKET_SIZE:
+                readings = self.decode_currents(data)
+                async with self._lock:
+                    self._latest_readings = readings
+                    self.current_readings = CurrentReadings(
+                        ct1=readings["ct1"], ct2=readings["ct2"]
+                    )
+                _LOGGER.debug("Updated readings: %s", readings)
+                if self.on_current_reading:
+                    self.on_current_reading(self.current_readings, self.load_status)
+            return
+
+        # Parse current readings (bytes 0-3)
+        # Raw values need square root calculation to get actual current
+        ct1_raw = struct.unpack("<H", data[0:2])[0]  # Little-endian uint16
+        ct2_raw = struct.unpack("<H", data[2:4])[0]  # Little-endian uint16
+
+        ct1_current = math.sqrt(ct1_raw) * 1  # Apply scale factor
+        ct2_current = math.sqrt(ct2_raw) * 1  # Apply scale factor
+
+        self.current_readings = CurrentReadings(
+            ct1=round(ct1_current, 1), ct2=round(ct2_current, 1)
+        )
+
+        # Update legacy readings dict
+        async with self._lock:
+            self._latest_readings = {
+                "ct1": self.current_readings.ct1,
+                "ct2": self.current_readings.ct2,
+            }
+
+        # Parse load counters (bytes 4-9) - used for timing calculations
+        load_counters = [
+            struct.unpack("<H", data[4:6])[0],  # Load 1 counter
+            struct.unpack("<H", data[6:8])[0],  # Load 2 counter
+            struct.unpack("<H", data[8:10])[0],  # Load 3 counter
+        ]
+
+        # Parse load status (bytes 10-12)
+        load_status_bytes = [data[10], data[11], data[12]]
+
+        # Get delay settings from current configuration
+        turn_on_delays = [load.turn_on_delay for load in self.settings.loads]
+        turn_off_delays = [load.turn_off_delay for load in self.settings.loads]
+
+        # Update load status with remaining time calculations
+        self.load_status = []
+        for i in range(3):
+            status_byte = load_status_bytes[i]
+            remaining_time = None
+
+            if status_byte == 0:
+                status = LoadStatus.OFF
+            elif status_byte == 1:
+                status = LoadStatus.ON
+            elif status_byte == 2:
+                # Wait-off: counting down turn_off_delay
+                status = LoadStatus.WAIT_OFF
+                remaining_time = max(0, turn_off_delays[i] - load_counters[i])
+            elif status_byte == 3:
+                # Wait-on: counting down turn_on_delay (in minutes, converted to seconds)
+                status = LoadStatus.WAIT_ON
+                remaining_time = max(0, turn_on_delays[i] * 60 - load_counters[i])
+            else:
+                status = LoadStatus.OFF
+
+            self.load_status.append(
+                LoadState(status=status, remaining_time=remaining_time)
+            )
+
+        # Notify callbacks
+        if self.on_current_reading:
+            self.on_current_reading(self.current_readings, self.load_status)
+
+    async def _send_command(self, command: int) -> None:
+        """Send single-byte command to device"""
+        if self._websocket and self._connected:
+            command_bytes = struct.pack("B", command)
+            await self._websocket.send(command_bytes)
+
+    async def send_config_to_server(self) -> None:
+        """
+        Send current configuration to the device
+
+        Sends 12-byte configuration message with current settings
+        """
+        if not (self._websocket and self._connected):
+            _LOGGER.warning("Cannot send configuration: WebSocket not connected")
+            return
+
+        # Build 12-byte configuration message
+        config_data = bytearray(12)
+
+        # Byte 0: Main supply breaker
+        config_data[0] = round(self.settings.main_supply_breaker / self.settings.scale)
+
+        # Bytes 1-9: Load configurations (3 loads × 3 bytes each)
+        for i in range(len(self.settings.loads)):
+            load = self.settings.loads[i]
+            base_idx = i * 3 + 1
+            config_data[base_idx] = round(load.load_breaker / self.settings.scale)
+            config_data[base_idx + 1] = load.turn_on_delay
+            config_data[base_idx + 2] = load.turn_off_delay
+
+        # Bytes 10-11: Active channels and CT index
+        config_data[10] = self.settings.active_ch
+        config_data[11] = self.settings.ct_index
+
+        await self._websocket.send(config_data)
+        _LOGGER.info("Configuration sent to server")
+
+    async def save_config(self) -> None:
+        """Send save command (115) to persist configuration to device memory"""
+        if self._websocket and self._connected:
+            await self._send_command(115)
+            _LOGGER.info("Save command sent to server")
+        else:
+            _LOGGER.warning("Cannot send save command: WebSocket not connected")
+
+    def update_settings(self, **kwargs) -> None:
+        """Update settings and send to device"""
+        # Update settings with provided kwargs
+        for key, value in kwargs.items():
+            if hasattr(self.settings, key):
+                setattr(self.settings, key, value)
+
+        # Schedule config send (async) with proper task management
+        if self._connected:
+            self._schedule_config_send()
+
+    def update_load_setting(self, load_index: int, setting_name: str, value) -> None:
+        """Update specific load setting and send to device"""
+        if 0 <= load_index < len(self.settings.loads):
+            if hasattr(self.settings.loads[load_index], setting_name):
+                setattr(self.settings.loads[load_index], setting_name, value)
+
+                # Schedule config send (async) with proper task management
+                if self._connected:
+                    self._schedule_config_send()
+
+    def set_host(self, host: str) -> None:
+        """Update device host/IP address"""
+        self._host = host
+        self._ws_url = f"ws://{host}:{self._port}/ws"
+        # Disconnect to force reconnection with new host
+        asyncio.create_task(self.disconnect())
+
+    def _schedule_config_send(self) -> None:
+        """Schedule config send with proper task management."""
+        if self._config_send_task and not self._config_send_task.done():
+            self._config_send_task.cancel()
+        self._config_send_task = asyncio.create_task(self.send_config_to_server())
+
+    def _notify_status_change(self) -> None:
+        """Notify callback of connection status change"""
+        if self.on_status_change:
+            self.on_status_change(self.connection_status)
+
+    def get_state_dict(self) -> dict:
+        """Get current state as dictionary for serialization"""
+        return {
+            "connection_status": self.connection_status.value,
+            "current_readings": asdict(self.current_readings),
+            "load_status": [asdict(load) for load in self.load_status],
+            "settings": asdict(self.settings),
+            "host": self._host,
+            "port": self._port,
+        }

@@ -1,0 +1,84 @@
+save_config:
+  name: "Save Configuration"
+  description: "Save the current configuration to the VElectric device memory"
+  target:
+    device:
+      integration: velectric_load_manager
+
+send_config:
+  name: "Send Configuration"
+  description: "Send the current configuration to the VElectric device"
+  target:
+    device:
+      integration: velectric_load_manager
+
+update_load_setting:
+  name: "Update Load Setting"
+  description: "Update a specific load setting and send to device"
+  target:
+    device:
+      integration: velectric_load_manager
+  fields:
+    load_index:
+      name: "Load Index"
+      description: "Load channel index (0, 1, or 2 for loads 1, 2, 3)"
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 1
+    setting_name:
+      name: "Setting Name"
+      description: "Name of the setting to update"
+      required: true
+      selector:
+        select:
+          options:
+            - "load_breaker"
+            - "turn_on_delay"
+            - "turn_off_delay"
+    value:
+      name: "Value"
+      description: "New value for the setting"
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 300
+          step: 1
+
+update_main_settings:
+  name: "Update Main Settings"
+  description: "Update main device settings"
+  target:
+    device:
+      integration: velectric_load_manager
+  fields:
+    main_supply_breaker:
+      name: "Main Supply Breaker"
+      description: "Main supply breaker rating in amps"
+      required: false
+      selector:
+        number:
+          min: 10
+          max: 200
+          step: 1
+    active_ch:
+      name: "Active Channels"
+      description: "Number of active load channels"
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 3
+          step: 1
+    ct_index:
+      name: "CT Index"
+      description: "Current transformer index"
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 1
