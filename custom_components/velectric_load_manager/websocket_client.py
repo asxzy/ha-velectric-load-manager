@@ -23,9 +23,10 @@ class VElectricWebSocketClient:
         self._host = host
         self._port = port
         self._ws_url = f"ws://{host}:{port}/ws"
-        self._websocket: websockets.WebSocketServerProtocol | None = None
+        self._websocket: websockets.WebSocketClientProtocol | None = None
         self._connected = False
         self._ping_task: asyncio.Task | None = None
+        self._message_task: asyncio.Task | None = None
         self._latest_readings: dict[str, float] = {"ct1": 0.0, "ct2": 0.0}
         self._lock = asyncio.Lock()
 
@@ -42,7 +43,7 @@ class VElectricWebSocketClient:
 
             # Start the ping loop and message handler
             self._ping_task = asyncio.create_task(self._ping_loop())
-            asyncio.create_task(self._message_handler())
+            self._message_task = asyncio.create_task(self._message_handler())
 
         except Exception as err:
             _LOGGER.error("Failed to connect to VElectric device: %s", err)
@@ -57,17 +58,26 @@ class VElectricWebSocketClient:
         _LOGGER.debug("Disconnecting from VElectric device")
         self._connected = False
 
-        if self._ping_task:
-            self._ping_task.cancel()
-            try:
-                await self._ping_task
-            except asyncio.CancelledError:
-                pass
-            self._ping_task = None
+        # Cancel tasks with timeout protection
+        tasks_to_cancel = [self._ping_task, self._message_task]
+        for task in tasks_to_cancel:
+            if task:
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+        
+        self._ping_task = None
+        self._message_task = None
 
         if self._websocket:
-            await self._websocket.close()
-            self._websocket = None
+            try:
+                await asyncio.wait_for(self._websocket.close(), timeout=5.0)
+            except asyncio.TimeoutError:
+                _LOGGER.warning("WebSocket close timed out")
+            finally:
+                self._websocket = None
 
         _LOGGER.info("Disconnected from VElectric device")
 

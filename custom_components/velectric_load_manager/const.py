@@ -10,7 +10,7 @@ CONF_PORT: Final = "port"
 
 # Default values
 DEFAULT_PORT: Final = 80
-DEFAULT_SCAN_INTERVAL: Final = 2  # seconds
+DEFAULT_SCAN_INTERVAL: Final = 5  # seconds (reduced from 2s to be less aggressive)
 
 # Device info
 MANUFACTURER: Final = "VElectric"

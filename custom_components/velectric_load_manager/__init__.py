@@ -66,7 +66,6 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
         self._host = host
         self._port = port
         self._client: VElectricWebSocketClient | None = None
-        self._connected = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from VElectric Load Manager."""
@@ -74,9 +73,8 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
             self._client = VElectricWebSocketClient(self._host, self._port)
 
         try:
-            if not self._connected:
+            if not self._client.is_connected:
                 await self._client.connect()
-                self._connected = True
 
             data = await self._client.get_readings()
             return {
@@ -85,7 +83,10 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
                 "connection_status": "Connected",
             }
         except Exception as err:
-            self._connected = False
+            # Reset client on connection failure to force reconnection
+            if self._client:
+                await self._client.disconnect()
+                self._client = None
             _LOGGER.warning("Error communicating with VElectric device: %s", err)
             raise UpdateFailed(f"Error communicating with device: {err}") from err
 
@@ -94,4 +95,3 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
         if self._client:
             await self._client.disconnect()
             self._client = None
-        self._connected = False

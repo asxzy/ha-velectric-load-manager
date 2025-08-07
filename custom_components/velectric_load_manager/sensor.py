@@ -126,6 +126,8 @@ class VElectricConnectionSensor(VElectricBaseSensor):
     @property
     def native_value(self) -> str | None:
         """Return the state of the sensor."""
+        if not self.coordinator.last_update_success:
+            return "Connection Failed"
         if self.coordinator.data is None:
-            return "Disconnected"
-        return self.coordinator.data.get(self._sensor_key, "Disconnected")
+            return "No Data"
+        return self.coordinator.data.get(self._sensor_key, "Unknown")
