@@ -4,10 +4,10 @@
   "codeowners": ["@asxzy"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/asxzy/vec-current-reader",
+  "documentation": "https://github.com/asxzy/ha-velectric-load-manager",
   "integration_type": "device",
-  "iot_class": "local_push",
-  "issue_tracker": "https://github.com/asxzy/vec-current-reader/issues",
+  "iot_class": "local_push", 
+  "issue_tracker": "https://github.com/asxzy/ha-velectric-load-manager/issues",
   "requirements": ["websockets>=15.0.0"],
   "version": "1.0.0"
 }

@@ -10,7 +10,6 @@ from typing import Any
 
 import voluptuous as vol
 import websockets
-from websockets.exceptions import ConnectionClosedError, InvalidURI
 
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry
@@ -21,36 +20,12 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import CONF_HOST, CONF_PORT, CONF_NAME, DEFAULT_PORT, DOMAIN
 
 
-def validate_hostname(hostname: str) -> str:
-    """Validate hostname or IP address."""
-    hostname = hostname.strip().lower()
-
-    # Check for invalid characters
-    if any(char in hostname for char in ["<", ">", '"', "'"]):
-        raise vol.Invalid("Invalid characters in hostname")
-
-    try:
-        # Try to parse as IP address
-        ipaddress.ip_address(hostname)
-        return hostname
-    except ValueError:
-        # Check if it's a valid hostname
-        if len(hostname) > 253:
-            raise vol.Invalid("Hostname too long")
-
-        hostname = hostname.rstrip(".")
-        allowed = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$")
-        if not all(allowed.match(x) for x in hostname.split(".")):
-            raise vol.Invalid("Invalid hostname format")
-
-        return hostname
-
-
 _LOGGER = logging.getLogger(__name__)
+
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): validate_hostname,
+        vol.Required(CONF_HOST): str,
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): vol.All(
             int, vol.Range(min=1, max=65535)
         ),
@@ -59,35 +34,55 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
+def _validate_hostname(hostname: str) -> None:
+    """Validate hostname or IP address."""
+    hostname = hostname.strip()
+    
+    # Check for invalid characters
+    if any(char in hostname for char in ["<", ">", '"', "'"]):
+        raise CannotConnect("Invalid characters in hostname")
+
+    try:
+        # Try to parse as IP address
+        ipaddress.ip_address(hostname)
+        return  # Valid IP address
+    except ValueError:
+        # Check if it's a valid hostname
+        if len(hostname) > 253:
+            raise CannotConnect("Hostname too long")
+
+        hostname = hostname.rstrip(".")
+        allowed = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$")
+        if not all(allowed.match(x) for x in hostname.split(".")):
+            raise CannotConnect("Invalid hostname format")
+
+
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-    host = data[CONF_HOST]
+    host = data[CONF_HOST].strip()
     port = data[CONF_PORT]
+    
+    # Validate hostname/IP format
+    _validate_hostname(host)
 
     # Test websocket connection
     ws_url = f"ws://{host}:{port}/ws"
     try:
-        async with asyncio.timeout(10):
-            async with websockets.connect(ws_url) as ws:
-                # Send a test request
-                await ws.send(bytes([103]))
-                # Wait for a response
-                await asyncio.wait_for(ws.recv(), timeout=5.0)
-    except asyncio.TimeoutError as err:
+        # Simple connection test with timeout
+        async with asyncio.timeout(5):
+            websocket = await websockets.connect(ws_url)
+            await websocket.close()
+    except asyncio.TimeoutError:
         _LOGGER.error("Connection to VElectric device timed out")
-        raise CannotConnect("Connection timeout") from err
-    except InvalidURI as err:
-        _LOGGER.error("Invalid WebSocket URI: %s", ws_url)
-        raise CannotConnect("Invalid device address") from err
-    except ConnectionClosedError as err:
-        _LOGGER.error("Connection closed by VElectric device")
-        raise CannotConnect("Device rejected connection") from err
+        raise CannotConnect("Connection timeout")
     except Exception as err:
-        _LOGGER.error("Unexpected error connecting to VElectric device: %s", err)
-        raise CannotConnect("Connection failed") from err
+        _LOGGER.error("Failed to connect to VElectric device: %s", err)
+        raise CannotConnect("Connection failed")
 
     # Return info to store in the config entry
-    device_name = data.get(CONF_NAME, f"VElectric Load Manager ({host})")
+    device_name = data.get(CONF_NAME)
+    if not device_name:
+        device_name = f"VElectric Load Manager ({host})"
     return {"title": device_name}
 
 
@@ -138,16 +133,17 @@ class OptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Update the config entry with new options
-            return self.async_create_entry(
-                title="",
-                data={
-                    **self.config_entry.data,
-                    CONF_NAME: user_input.get(
-                        CONF_NAME, self.config_entry.data.get(CONF_NAME)
-                    ),
-                },
+            # Update the config entry data
+            new_data = {
+                **self.config_entry.data,
+                CONF_NAME: user_input.get(CONF_NAME, self.config_entry.data.get(CONF_NAME)),
+            }
+            
+            # Update the config entry with new data
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=new_data
             )
+            return self.async_create_entry(title="", data={})
 
         # Pre-fill current values
         current_name = self.config_entry.data.get(
