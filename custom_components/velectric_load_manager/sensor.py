@@ -20,6 +20,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import VElectricDataUpdateCoordinator
@@ -273,7 +274,7 @@ class VElectricPowerSensor(VElectricBaseSensor):
         return current * self._voltage
 
 
-class VElectricEnergySensor(VElectricBaseSensor):
+class VElectricEnergySensor(VElectricBaseSensor, RestoreEntity):
     """Sensor for energy calculations using Riemann sum integration."""
 
     def __init__(
