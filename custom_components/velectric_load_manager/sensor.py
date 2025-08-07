@@ -13,8 +13,8 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfElectricCurrent,
-    UnitOfPower,
     UnitOfEnergy,
+    UnitOfPower,
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
@@ -32,29 +32,29 @@ from .const import (
     DOMAIN,
     MANUFACTURER,
     MODEL,
-    SENSOR_CT1_CURRENT,
-    SENSOR_CT2_CURRENT,
-    SENSOR_CT1_POWER,
-    SENSOR_CT2_POWER,
-    SENSOR_CT1_ENERGY,
-    SENSOR_CT2_ENERGY,
-    SENSOR_CONNECTION_STATUS,
-    SENSOR_LOAD1_REMAINING_TIME,
-    SENSOR_LOAD2_REMAINING_TIME,
-    SENSOR_LOAD3_REMAINING_TIME,
-    SENSOR_MAIN_BREAKER,
     SENSOR_ACTIVE_CHANNELS,
-    SENSOR_CT_RATING,
+    SENSOR_CONNECTION_STATUS,
+    SENSOR_CT1_CURRENT,
+    SENSOR_CT1_ENERGY,
+    SENSOR_CT1_POWER,
+    SENSOR_CT2_CURRENT,
+    SENSOR_CT2_ENERGY,
+    SENSOR_CT2_POWER,
     SENSOR_CT_INDEX,
+    SENSOR_CT_RATING,
     SENSOR_LOAD1_BREAKER,
-    SENSOR_LOAD2_BREAKER,
-    SENSOR_LOAD3_BREAKER,
-    SENSOR_LOAD1_TURN_ON_DELAY,
-    SENSOR_LOAD2_TURN_ON_DELAY,
-    SENSOR_LOAD3_TURN_ON_DELAY,
+    SENSOR_LOAD1_REMAINING_TIME,
     SENSOR_LOAD1_TURN_OFF_DELAY,
+    SENSOR_LOAD1_TURN_ON_DELAY,
+    SENSOR_LOAD2_BREAKER,
+    SENSOR_LOAD2_REMAINING_TIME,
     SENSOR_LOAD2_TURN_OFF_DELAY,
+    SENSOR_LOAD2_TURN_ON_DELAY,
+    SENSOR_LOAD3_BREAKER,
+    SENSOR_LOAD3_REMAINING_TIME,
     SENSOR_LOAD3_TURN_OFF_DELAY,
+    SENSOR_LOAD3_TURN_ON_DELAY,
+    SENSOR_MAIN_BREAKER,
     SENSOR_NAMES,
 )
 
@@ -274,7 +274,7 @@ class VElectricPowerSensor(VElectricBaseSensor):
         return current * self._voltage
 
 
-class VElectricEnergySensor(VElectricBaseSensor, RestoreEntity):
+class VElectricEnergySensor(RestoreEntity, VElectricBaseSensor):
     """Sensor for energy calculations using Riemann sum integration."""
 
     def __init__(
