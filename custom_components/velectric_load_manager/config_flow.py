@@ -151,14 +151,23 @@ class OptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 # Validate connection if host or port changed
-                host_changed = user_input.get(CONF_HOST) != self.config_entry.data[CONF_HOST]
-                port_changed = user_input.get(CONF_PORT) != self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
-                
+                host_changed = (
+                    user_input.get(CONF_HOST) != self.config_entry.data[CONF_HOST]
+                )
+                port_changed = user_input.get(CONF_PORT) != self.config_entry.data.get(
+                    CONF_PORT, DEFAULT_PORT
+                )
+
                 if host_changed or port_changed:
                     # Test new connection before updating
                     test_data = {
-                        CONF_HOST: user_input.get(CONF_HOST, self.config_entry.data[CONF_HOST]),
-                        CONF_PORT: user_input.get(CONF_PORT, self.config_entry.data.get(CONF_PORT, DEFAULT_PORT))
+                        CONF_HOST: user_input.get(
+                            CONF_HOST, self.config_entry.data[CONF_HOST]
+                        ),
+                        CONF_PORT: user_input.get(
+                            CONF_PORT,
+                            self.config_entry.data.get(CONF_PORT, DEFAULT_PORT),
+                        ),
                     }
                     await validate_input(self.hass, test_data)
 
@@ -190,11 +199,13 @@ class OptionsFlow(config_entries.OptionsFlow):
                 self.hass.config_entries.async_update_entry(
                     self.config_entry, data=new_data
                 )
-                
+
                 # Trigger reload if host or port changed to update coordinator
                 if host_changed or port_changed:
-                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                
+                    await self.hass.config_entries.async_reload(
+                        self.config_entry.entry_id
+                    )
+
                 return self.async_create_entry(title="", data={})
             except CannotConnect:
                 errors["base"] = "cannot_connect"
