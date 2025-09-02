@@ -149,33 +149,64 @@ class OptionsFlow(config_entries.OptionsFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Update the config entry data with all configurable fields
-            new_data = {
-                **self.config_entry.data,
-                CONF_NAME: user_input.get(
-                    CONF_NAME, self.config_entry.data.get(CONF_NAME)
-                ),
-                CONF_VOLTAGE: user_input.get(
-                    CONF_VOLTAGE,
-                    self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
-                ),
-                CONF_SCAN_INTERVAL: user_input.get(
-                    CONF_SCAN_INTERVAL,
-                    self.config_entry.data.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    ),
-                ),
-            }
+            try:
+                # Validate connection if host or port changed
+                host_changed = user_input.get(CONF_HOST) != self.config_entry.data[CONF_HOST]
+                port_changed = user_input.get(CONF_PORT) != self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+                
+                if host_changed or port_changed:
+                    # Test new connection before updating
+                    test_data = {
+                        CONF_HOST: user_input.get(CONF_HOST, self.config_entry.data[CONF_HOST]),
+                        CONF_PORT: user_input.get(CONF_PORT, self.config_entry.data.get(CONF_PORT, DEFAULT_PORT))
+                    }
+                    await validate_input(self.hass, test_data)
 
-            # Update the config entry with new data
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, data=new_data
-            )
-            return self.async_create_entry(title="", data={})
+                # Update the config entry data with all configurable fields
+                new_data = {
+                    **self.config_entry.data,
+                    CONF_HOST: user_input.get(
+                        CONF_HOST, self.config_entry.data[CONF_HOST]
+                    ),
+                    CONF_PORT: user_input.get(
+                        CONF_PORT, self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+                    ),
+                    CONF_NAME: user_input.get(
+                        CONF_NAME, self.config_entry.data.get(CONF_NAME)
+                    ),
+                    CONF_VOLTAGE: user_input.get(
+                        CONF_VOLTAGE,
+                        self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
+                    ),
+                    CONF_SCAN_INTERVAL: user_input.get(
+                        CONF_SCAN_INTERVAL,
+                        self.config_entry.data.get(
+                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        ),
+                    ),
+                }
+
+                # Update the config entry with new data
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=new_data
+                )
+                
+                # Trigger reload if host or port changed to update coordinator
+                if host_changed or port_changed:
+                    await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                
+                return self.async_create_entry(title="", data={})
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
 
         # Pre-fill current values
+        current_host = self.config_entry.data[CONF_HOST]
+        current_port = self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
         current_name = self.config_entry.data.get(
-            CONF_NAME, f"VElectric Load Manager ({self.config_entry.data[CONF_HOST]})"
+            CONF_NAME, f"VElectric Load Manager ({current_host})"
         )
         current_voltage = self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
         current_scan_interval = self.config_entry.data.get(
@@ -184,6 +215,10 @@ class OptionsFlow(config_entries.OptionsFlow):
 
         options_schema = vol.Schema(
             {
+                vol.Required(CONF_HOST, default=current_host): str,
+                vol.Optional(CONF_PORT, default=current_port): vol.All(
+                    int, vol.Range(min=1, max=65535)
+                ),
                 vol.Optional(CONF_NAME, default=current_name): str,
                 vol.Optional(CONF_VOLTAGE, default=current_voltage): vol.All(
                     vol.Coerce(float), vol.Range(min=100, max=400)
