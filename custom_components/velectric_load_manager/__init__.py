@@ -43,25 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Add listener for config entry updates
-    entry.async_on_unload(entry.add_update_listener(async_update_options))
+    # Config updates are handled directly in the options flow to preserve entity state
 
     # No services registered - integration is read-only
 
     return True
-
-
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Update options for config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-
-    # Get new configuration
-    host = entry.data[CONF_HOST]
-    port = entry.data.get(CONF_PORT, 80)
-    scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-
-    # Update coordinator settings
-    await coordinator.async_update_config(host, port, scan_interval)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

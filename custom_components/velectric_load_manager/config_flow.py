@@ -200,10 +200,13 @@ class OptionsFlow(config_entries.OptionsFlow):
                     self.config_entry, data=new_data
                 )
 
-                # Trigger reload if host or port changed to update coordinator
+                # Update coordinator directly instead of reloading to preserve energy sensor state
                 if host_changed or port_changed:
-                    await self.hass.config_entries.async_reload(
-                        self.config_entry.entry_id
+                    coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+                    await coordinator.async_update_config(
+                        new_data[CONF_HOST],
+                        new_data.get(CONF_PORT, DEFAULT_PORT),
+                        new_data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     )
 
                 return self.async_create_entry(title="", data={})
