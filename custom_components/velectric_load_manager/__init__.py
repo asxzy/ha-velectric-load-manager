@@ -19,7 +19,10 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
+from .version import __version__
 from .websocket_client import VElectricWebSocketClient
+
+__version__ = __version__
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,8 +81,8 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
         self._port = port
         self._scan_interval = scan_interval
         self._client: VElectricWebSocketClient | None = None
-        self._connection_failures = 0
-        self._last_connection_attempt = 0
+        # Connection failure tracking
+        self._connection_state = {"failures": 0, "last_attempt": 0}
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from VElectric Load Manager."""
@@ -90,22 +93,28 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
             if not self._client.is_connected:
                 # Implement exponential backoff for connection failures
                 current_time = time.time()
-                if self._connection_failures > 0:
+                if self._connection_state["failures"] > 0:
                     backoff_delay = min(
-                        2 ** (self._connection_failures - 1), 300
+                        2 ** (self._connection_state["failures"] - 1), 300
                     )  # Max 5 minutes
-                    if current_time - self._last_connection_attempt < backoff_delay:
+                    if (
+                        current_time - self._connection_state["last_attempt"]
+                        < backoff_delay
+                    ):
+                        retry_in = backoff_delay - (
+                            current_time - self._connection_state["last_attempt"]
+                        )
                         raise UpdateFailed(
-                            f"Connection backing off, retry in {backoff_delay - (current_time - self._last_connection_attempt):.0f}s"
+                            f"Connection backing off, retry in {retry_in:.0f}s"
                         )
 
-                self._last_connection_attempt = current_time
+                self._connection_state["last_attempt"] = current_time
                 await self._client.connect()
 
             data = await self._client.get_readings()
 
             # Reset failure count on successful connection
-            self._connection_failures = 0
+            self._connection_state["failures"] = 0
 
             # Build comprehensive data dict with current readings, load status, and settings
             result = {
@@ -142,7 +151,7 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
 
         except Exception as err:
             # Increment failure count for exponential backoff
-            self._connection_failures += 1
+            self._connection_state["failures"] += 1
 
             # Reset client on connection failure to force reconnection
             if self._client:
@@ -151,7 +160,7 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
 
             _LOGGER.warning(
                 "Error communicating with VElectric device (failure %d): %s",
-                self._connection_failures,
+                self._connection_state["failures"],
                 err,
             )
             raise UpdateFailed(f"Error communicating with device: {err}") from err
@@ -179,8 +188,7 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
                 self._client = None
 
             # Reset connection failure tracking
-            self._connection_failures = 0
-            self._last_connection_attempt = 0
+            self._connection_state = {"failures": 0, "last_attempt": 0}
 
             # Trigger immediate update to test new connection
             await self.async_request_refresh()

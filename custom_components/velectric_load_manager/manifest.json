@@ -9,5 +9,5 @@
   "iot_class": "local_push", 
   "issue_tracker": "https://github.com/asxzy/ha-velectric-load-manager/issues",
   "requirements": ["websockets>=15.0.0"],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
