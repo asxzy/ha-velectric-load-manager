@@ -32,6 +32,9 @@ SENSOR_CT1_POWER: Final = "ct1_power"
 SENSOR_CT2_POWER: Final = "ct2_power"
 SENSOR_CT1_ENERGY: Final = "ct1_energy"
 SENSOR_CT2_ENERGY: Final = "ct2_energy"
+SENSOR_TOTAL_CURRENT: Final = "total_current"
+SENSOR_TOTAL_POWER: Final = "total_power"
+SENSOR_TOTAL_ENERGY: Final = "total_energy"
 SENSOR_CONNECTION_STATUS: Final = "connection_status"
 
 # Load sensor keys
@@ -65,6 +68,9 @@ SENSOR_NAMES = {
     SENSOR_CT2_POWER: "CT2 Power",
     SENSOR_CT1_ENERGY: "CT1 Energy",
     SENSOR_CT2_ENERGY: "CT2 Energy",
+    SENSOR_TOTAL_CURRENT: "Total Current",
+    SENSOR_TOTAL_POWER: "Total Power",
+    SENSOR_TOTAL_ENERGY: "Total Energy",
     SENSOR_CONNECTION_STATUS: "Connection Status",
     SENSOR_LOAD1_STATUS: "Load 1 Status",
     SENSOR_LOAD2_STATUS: "Load 2 Status",

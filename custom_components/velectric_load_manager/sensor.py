@@ -40,6 +40,9 @@ from .const import (
     SENSOR_CT2_CURRENT,
     SENSOR_CT2_ENERGY,
     SENSOR_CT2_POWER,
+    SENSOR_TOTAL_CURRENT,
+    SENSOR_TOTAL_ENERGY,
+    SENSOR_TOTAL_POWER,
     SENSOR_CT_INDEX,
     SENSOR_CT_RATING,
     SENSOR_LOAD1_BREAKER,
@@ -113,6 +116,27 @@ async def async_setup_entry(
             config_entry,
             SENSOR_CT2_ENERGY,
             SENSOR_CT2_POWER,
+            host,
+            device_name,
+        ),
+        # Total (whole house) sensors
+        VElectricCurrentSensor(
+            coordinator, config_entry, SENSOR_TOTAL_CURRENT, host, device_name
+        ),
+        VElectricPowerSensor(
+            coordinator,
+            config_entry,
+            SENSOR_TOTAL_POWER,
+            SENSOR_TOTAL_CURRENT,
+            host,
+            device_name,
+            voltage,
+        ),
+        VElectricEnergySensor(
+            coordinator,
+            config_entry,
+            SENSOR_TOTAL_ENERGY,
+            SENSOR_TOTAL_POWER,
             host,
             device_name,
         ),

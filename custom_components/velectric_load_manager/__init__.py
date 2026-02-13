@@ -120,6 +120,7 @@ class VElectricDataUpdateCoordinator(DataUpdateCoordinator):
             result = {
                 "ct1_current": data.get("ct1", 0.0),
                 "ct2_current": data.get("ct2", 0.0),
+                "total_current": data.get("ct1", 0.0) + data.get("ct2", 0.0),
                 "connection_status": "Connected",
             }
 
