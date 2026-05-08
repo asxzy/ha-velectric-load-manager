@@ -140,7 +140,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -152,9 +152,9 @@ class OptionsFlow(config_entries.OptionsFlow):
             try:
                 # Validate connection if host or port changed
                 host_changed = (
-                    user_input.get(CONF_HOST) != self.config_entry.data[CONF_HOST]
+                    user_input.get(CONF_HOST) != self._config_entry.data[CONF_HOST]
                 )
-                port_changed = user_input.get(CONF_PORT) != self.config_entry.data.get(
+                port_changed = user_input.get(CONF_PORT) != self._config_entry.data.get(
                     CONF_PORT, DEFAULT_PORT
                 )
 
@@ -162,34 +162,34 @@ class OptionsFlow(config_entries.OptionsFlow):
                     # Test new connection before updating
                     test_data = {
                         CONF_HOST: user_input.get(
-                            CONF_HOST, self.config_entry.data[CONF_HOST]
+                            CONF_HOST, self._config_entry.data[CONF_HOST]
                         ),
                         CONF_PORT: user_input.get(
                             CONF_PORT,
-                            self.config_entry.data.get(CONF_PORT, DEFAULT_PORT),
+                            self._config_entry.data.get(CONF_PORT, DEFAULT_PORT),
                         ),
                     }
                     await validate_input(self.hass, test_data)
 
                 # Update the config entry data with all configurable fields
                 new_data = {
-                    **self.config_entry.data,
+                    **self._config_entry.data,
                     CONF_HOST: user_input.get(
-                        CONF_HOST, self.config_entry.data[CONF_HOST]
+                        CONF_HOST, self._config_entry.data[CONF_HOST]
                     ),
                     CONF_PORT: user_input.get(
-                        CONF_PORT, self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+                        CONF_PORT, self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)
                     ),
                     CONF_NAME: user_input.get(
-                        CONF_NAME, self.config_entry.data.get(CONF_NAME)
+                        CONF_NAME, self._config_entry.data.get(CONF_NAME)
                     ),
                     CONF_VOLTAGE: user_input.get(
                         CONF_VOLTAGE,
-                        self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
+                        self._config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
                     ),
                     CONF_SCAN_INTERVAL: user_input.get(
                         CONF_SCAN_INTERVAL,
-                        self.config_entry.data.get(
+                        self._config_entry.data.get(
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                         ),
                     ),
@@ -197,12 +197,12 @@ class OptionsFlow(config_entries.OptionsFlow):
 
                 # Update the config entry with new data
                 self.hass.config_entries.async_update_entry(
-                    self.config_entry, data=new_data
+                    self._config_entry, data=new_data
                 )
 
                 # Update coordinator directly instead of reloading to preserve energy sensor state
                 if host_changed or port_changed:
-                    coordinator = self.hass.data[DOMAIN][self.config_entry.entry_id]
+                    coordinator = self.hass.data[DOMAIN][self._config_entry.entry_id]
                     await coordinator.async_update_config(
                         new_data[CONF_HOST],
                         new_data.get(CONF_PORT, DEFAULT_PORT),
@@ -217,13 +217,13 @@ class OptionsFlow(config_entries.OptionsFlow):
                 errors["base"] = "unknown"
 
         # Pre-fill current values
-        current_host = self.config_entry.data[CONF_HOST]
-        current_port = self.config_entry.data.get(CONF_PORT, DEFAULT_PORT)
-        current_name = self.config_entry.data.get(
+        current_host = self._config_entry.data[CONF_HOST]
+        current_port = self._config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+        current_name = self._config_entry.data.get(
             CONF_NAME, f"VElectric Load Manager ({current_host})"
         )
-        current_voltage = self.config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
-        current_scan_interval = self.config_entry.data.get(
+        current_voltage = self._config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
+        current_scan_interval = self._config_entry.data.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
         )
 
