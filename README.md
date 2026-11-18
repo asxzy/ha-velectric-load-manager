@@ -52,7 +52,37 @@ The integration will test the connection and create the following entities:
 - VElectric Load Manager device with websocket support
 - Device accessible on local network
 - WebSocket endpoint at `ws://[device-ip]:[port]/ws`
-- Device responds to byte command `103` with 14-byte current data
+
+## Device load
+
+The device is an ESP with a very small TCP pool, and its HTTP service wedges if
+it is contacted too often. The integration is designed around that:
+
+- **One connection, held open.** No reconnect timers, no polling by the
+  coordinator.
+- **No pings.** The WebSocket keepalive is disabled; it was a packet per cycle
+  for no benefit.
+- **No HTTP at all.** The web UI is never touched.
+
+Known firmware behaves in one of two ways, and the integration detects which:
+
+| Firmware | Behaviour | Bytes the integration sends |
+|---|---|---|
+| Push | sends a readings frame ~1/s on its own | **2**, once, at connect |
+| Request/response | silent until asked | 2 at connect, then 1 per 8 s poll |
+
+The push/request split is decided from actual traffic, not a timeout: a readings
+frame that arrives while no request is outstanding proves the device pushes, and
+polling then stops permanently. A device that only ever answers is polled at
+`PULL_INTERVAL` (8 s), which is 4x slower than the old 2 s request loop and
+applies only to devices that need it.
+
+- **Reconnects use exponential backoff** starting at 15 s, because the device
+  typically needs tens of seconds to recover. A session that delivered no data
+  does not reset the backoff.
+
+`docs/validating-esp-retry-impact.md` documents the measurements behind these
+choices and the tools under `tools/` used to reproduce them.
 
 ## Troubleshooting
 
@@ -61,6 +91,11 @@ The integration will test the connection and create the following entities:
 - Check network connectivity to device
 - Ensure device websocket endpoint is accessible
 - Check Home Assistant logs for detailed error messages
+
+### The device's web UI stopped responding
+Expected on this hardware: the HTTP task can wedge while `/ws` keeps working.
+Power-cycle the device. The integration itself does not cause this, because it
+never issues HTTP requests; see `docs/validating-esp-retry-impact.md`.
 
 ### Enable Debug Logging
 
@@ -83,6 +118,17 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Home Assistant Community](https://community.home-assistant.io/)
 
 ## Changelog
+
+### v1.2.0
+- Hold a single websocket connection; no pings and no coordinator polling
+- Detect push vs request/response firmware from real traffic; push devices are
+  never asked again, request/response devices are polled every 8 s
+- Connection is designed for the ESP's small TCP pool: exponential backoff
+  starting at 15 s, no HTTP requests, no compression
+- Coalesce pushed frames to a 5 s publish interval
+- Remove the `scan_interval` option: it never affected device traffic
+- Pass `config_entry` to the coordinator (required from HA 2026.8)
+- Shut the client down when setup fails, so retries cannot orphan connections
 
 ### v1.0.0
 - Initial release
