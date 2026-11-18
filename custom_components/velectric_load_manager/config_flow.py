@@ -22,11 +22,10 @@ from .const import (
     CONF_PORT,
     CONF_NAME,
     CONF_VOLTAGE,
-    CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_VOLTAGE,
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_FRAME_SIZE,
 )
 
 
@@ -42,9 +41,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_NAME): str,
         vol.Optional(CONF_VOLTAGE, default=DEFAULT_VOLTAGE): vol.All(
             vol.Coerce(float), vol.Range(min=100, max=400)
-        ),
-        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=60)
         ),
     }
 )
@@ -74,28 +70,38 @@ def _validate_hostname(hostname: str) -> None:
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
+    """Validate the user input allows us to connect.
+
+    A single short-lived websocket probe: one TCP connection, one handshake,
+    closed immediately. This is the only extra connection the integration ever
+    makes, and it only happens while the user is in the setup dialog.
+    """
     host = data[CONF_HOST].strip()
     port = data[CONF_PORT]
 
-    # Validate hostname/IP format
     _validate_hostname(host)
 
-    # Test websocket connection
     ws_url = f"ws://{host}:{port}/ws"
     try:
-        # Simple connection test with timeout
-        async with asyncio.timeout(5):
-            websocket = await websockets.connect(ws_url)
+        async with asyncio.timeout(8):
+            websocket = await websockets.connect(
+                ws_url,
+                open_timeout=6,
+                close_timeout=2,
+                ping_interval=None,
+                ping_timeout=None,
+                compression=None,
+                max_size=MAX_FRAME_SIZE,
+                max_queue=1,
+            )
             await websocket.close()
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, TimeoutError):
         _LOGGER.error("Connection to VElectric device timed out")
-        raise CannotConnect("Connection timeout")
+        raise CannotConnect("Connection timeout") from None
     except Exception as err:
         _LOGGER.error("Failed to connect to VElectric device: %s", err)
-        raise CannotConnect("Connection failed")
+        raise CannotConnect("Connection failed") from err
 
-    # Return info to store in the config entry
     device_name = data.get(CONF_NAME)
     if not device_name:
         device_name = f"VElectric Load Manager ({host})"
@@ -187,12 +193,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                         CONF_VOLTAGE,
                         self._config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE),
                     ),
-                    CONF_SCAN_INTERVAL: user_input.get(
-                        CONF_SCAN_INTERVAL,
-                        self._config_entry.data.get(
-                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                        ),
-                    ),
                 }
 
                 # Update the config entry with new data
@@ -206,7 +206,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                     await coordinator.async_update_config(
                         new_data[CONF_HOST],
                         new_data.get(CONF_PORT, DEFAULT_PORT),
-                        new_data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     )
 
                 return self.async_create_entry(title="", data={})
@@ -223,9 +222,6 @@ class OptionsFlow(config_entries.OptionsFlow):
             CONF_NAME, f"VElectric Load Manager ({current_host})"
         )
         current_voltage = self._config_entry.data.get(CONF_VOLTAGE, DEFAULT_VOLTAGE)
-        current_scan_interval = self._config_entry.data.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-        )
 
         options_schema = vol.Schema(
             {
@@ -237,9 +233,6 @@ class OptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_VOLTAGE, default=current_voltage): vol.All(
                     vol.Coerce(float), vol.Range(min=100, max=400)
                 ),
-                vol.Optional(
-                    CONF_SCAN_INTERVAL, default=current_scan_interval
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
             }
         )
 
