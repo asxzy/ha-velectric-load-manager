@@ -9,11 +9,9 @@ CONF_HOST: Final = "host"
 CONF_PORT: Final = "port"
 CONF_NAME: Final = "name"
 CONF_VOLTAGE: Final = "voltage"
-CONF_SCAN_INTERVAL: Final = "scan_interval"
 
 # Default values
 DEFAULT_PORT: Final = 80
-DEFAULT_SCAN_INTERVAL: Final = 5  # seconds (reduced from 2s to be less aggressive)
 DEFAULT_VOLTAGE: Final = 240  # Standard household voltage
 
 # Device info
@@ -21,9 +19,21 @@ MANUFACTURER: Final = "VElectric"
 MODEL: Final = "Load Manager"
 
 # Websocket protocol
-WS_REQUEST_BYTE: Final = 103  # 'g' command for readings
-PACKET_SIZE: Final = 14  # Expected packet size in bytes
-PING_INTERVAL: Final = 2.0  # Seconds between pings
+WS_CONFIG_BYTE: Final = 105  # 'i' command: ask once for the settings frame
+WS_REQUEST_BYTE: Final = 103  # 'g' command: ask for one readings frame
+PACKET_SIZE: Final = 14  # Legacy current-only packet size in bytes
+MAX_FRAME_SIZE: Final = 256  # Frames are 12-14 bytes; never buffer more
+
+# Connection tuning. The device is an ESP with a tiny TCP pool and an HTTP task
+# that wedges under load (see docs/validating-esp-retry-impact.md).
+READ_TIMEOUT: Final = 10.0  # Connect / single-read ceiling
+STALE_TIMEOUT: Final = 90.0  # No frame for this long -> the session is dead
+BACKOFF_MIN: Final = 15.0  # Floor for reconnects: longer than device recovery
+BACKOFF_MAX: Final = 300.0  # Ceiling for reconnect backoff
+
+# Request cadence, used only for firmware that never pushes on its own. This is
+# 4x slower than the old 2 s loop and only applies to devices that need it.
+PULL_INTERVAL: Final = 8.0
 
 # Sensor keys
 SENSOR_CT1_CURRENT: Final = "ct1_current"
